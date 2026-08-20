@@ -78,12 +78,17 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointClo
     velodyne_handler(msg);
     break;
 
+<<<<<<< HEAD
   case AT128:
     at128_handler(msg);
     break;
   
   case LS_C16:
     ls_c16_handler(msg);
+=======
+  case MARSIM:
+    sim_handler(msg);
+>>>>>>> 7cc4175de6f8ba2edf34bab02a42195b141027e9
     break;
   
   default:
@@ -631,6 +636,31 @@ void Preprocess::velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
           }
         }
       }
+    }
+}
+
+void Preprocess::sim_handler(const sensor_msgs::PointCloud2::ConstPtr &msg) {
+    pl_surf.clear();
+    pl_full.clear();
+    pcl::PointCloud<pcl::PointXYZI> pl_orig;
+    pcl::fromROSMsg(*msg, pl_orig);
+    int plsize = pl_orig.size();
+    pl_surf.reserve(plsize);
+    for (int i = 0; i < pl_orig.points.size(); i++) {
+        double range = pl_orig.points[i].x * pl_orig.points[i].x + pl_orig.points[i].y * pl_orig.points[i].y +
+                       pl_orig.points[i].z * pl_orig.points[i].z;
+        if (range < blind * blind) continue;
+        Eigen::Vector3d pt_vec;
+        PointType added_pt;
+        added_pt.x = pl_orig.points[i].x;
+        added_pt.y = pl_orig.points[i].y;
+        added_pt.z = pl_orig.points[i].z;
+        added_pt.intensity = pl_orig.points[i].intensity;
+        added_pt.normal_x = 0;
+        added_pt.normal_y = 0;
+        added_pt.normal_z = 0;
+        added_pt.curvature = 0.0;
+        pl_surf.points.push_back(added_pt);
     }
 }
 

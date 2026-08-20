@@ -6,6 +6,7 @@
 2. [R2LIVE](https://github.com/hku-mars/r2live): A high-precision LiDAR-inertial-Vision fusion work using FAST-LIO as LiDAR-inertial front-end.
 3. [LI_Init](https://github.com/hku-mars/LiDAR_IMU_Init): A robust, real-time LiDAR-IMU extrinsic initialization and synchronization package..
 4. [FAST-LIO-LOCALIZATION](https://github.com/HViktorTsoi/FAST_LIO_LOCALIZATION): The integration of FAST-LIO with **Re-localization** function module.
+5. [FAST-LIVO](https://github.com/hku-mars/FAST-LIVO) | [FAST-LIVO2](https://github.com/hku-mars/FAST-LIVO2): A state-of-art LiDAR-inertial-visual odometry (LIVO) system with high computational efficiency, robustness, and pixel-level accuracy.
 
 **Control and Plan:**
 
@@ -203,7 +204,22 @@ Step B: Run below
 
 Step C: Run LiDAR's ros driver or play rosbag.
 
-### 3.4 PCD file save
+### 3.4 For MARSIM Simulator
+
+Install MARSIM: https://github.com/hku-mars/MARSIM and run MARSIM as below
+
+```
+cd ~/$MARSIM_ROS_DIR$
+roslaunch test_interface single_drone_avia.launch
+```
+
+Then Run FAST-LIO:
+
+```
+roslaunch fast_lio mapping_marsim.launch
+```
+
+### 3.5 PCD file save
 
 Set ``` pcd_save_enable ``` in launchfile to ``` 1 ```. All the scans (in global frame) will be accumulated and saved to the file ``` FAST_LIO/PCD/scans.pcd ``` after the FAST-LIO is terminated. ```pcl_viewer scans.pcd``` can visualize the point clouds.
 
