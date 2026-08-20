@@ -7,5 +7,6 @@ Log/*.pdf
 .vscode/settings.json
 PCD/*.pcd
 result/
-doc/
+doc/*.png
 config/
+launch/
