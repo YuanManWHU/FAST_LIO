@@ -57,8 +57,12 @@
 #include <tf/transform_broadcaster.h>
 #include <geometry_msgs/Vector3.h>
 #include <livox_ros_driver/CustomMsg.h>
+#include <Eigen/Geometry>
 #include "preprocess.h"
 #include <ikd-Tree/ikd_Tree.h>
+#include <filesystem>
+#include <iomanip>
+#include <sstream>
 
 #define INIT_TIME           (0.1)
 #define LASER_POINT_COV     (0.001)
@@ -70,7 +74,7 @@ double kdtree_incremental_time = 0.0, kdtree_search_time = 0.0, kdtree_delete_ti
 double T1[MAXN], s_plot[MAXN], s_plot2[MAXN], s_plot3[MAXN], s_plot4[MAXN], s_plot5[MAXN], s_plot6[MAXN], s_plot7[MAXN], s_plot8[MAXN], s_plot9[MAXN], s_plot10[MAXN], s_plot11[MAXN];
 double match_time = 0, solve_time = 0, solve_const_H_time = 0;
 int    kdtree_size_st = 0, kdtree_size_end = 0, add_point_size = 0, kdtree_delete_counter = 0;
-bool   runtime_pos_log = false, pcd_save_en = false, time_sync_en = false, extrinsic_est_en = true, path_en = true;
+bool   runtime_pos_log = false, pcd_save_en = false, hba_save_en = false, time_sync_en = false, extrinsic_est_en = true, path_en = true;
 /**************************/
 
 float res_last[100000] = {0.0};
@@ -82,7 +86,7 @@ mutex mtx_buffer;
 condition_variable sig_buffer;
 
 string root_dir = ROOT_DIR;
-string map_file_path, lid_topic, imu_topic;
+string map_file_path, lid_topic, imu_topic, hba_output_path;
 
 double res_mean_last = 0.05, total_residual = 0.0;
 double last_timestamp_lidar = 0, last_timestamp_imu = -1.0;
@@ -146,20 +150,93 @@ void SigHandle(int sig)
     sig_buffer.notify_all();
 }
 
-inline void dump_lio_state_to_log(FILE *fp)  
+inline void dump_lio_state_to_log(FILE *pose_fp, FILE *cov_fp)  
 {
-    V3D rot_ang(Log(state_point.rot.toRotationMatrix()));
-    fprintf(fp, "%lf ", Measures.lidar_beg_time - first_lidar_time);
-    fprintf(fp, "%lf %lf %lf ", rot_ang(0), rot_ang(1), rot_ang(2));                   // Angle
-    fprintf(fp, "%lf %lf %lf ", state_point.pos(0), state_point.pos(1), state_point.pos(2)); // Pos  
-    fprintf(fp, "%lf %lf %lf ", 0.0, 0.0, 0.0);                                        // omega  
-    fprintf(fp, "%lf %lf %lf ", state_point.vel(0), state_point.vel(1), state_point.vel(2)); // Vel  
-    fprintf(fp, "%lf %lf %lf ", 0.0, 0.0, 0.0);                                        // Acc  
-    fprintf(fp, "%lf %lf %lf ", state_point.bg(0), state_point.bg(1), state_point.bg(2));    // Bias_g  
-    fprintf(fp, "%lf %lf %lf ", state_point.ba(0), state_point.ba(1), state_point.ba(2));    // Bias_a  
-    fprintf(fp, "%lf %lf %lf ", state_point.grav[0], state_point.grav[1], state_point.grav[2]); // Bias_a  
-    fprintf(fp, "\r\n");  
-    fflush(fp);
+    // V3D rot_ang(Log(state_point.rot.toRotationMatrix()));
+    // fprintf(fp, "%lf ", Measures.lidar_beg_time - first_lidar_time);
+    // fprintf(fp, "%lf %lf %lf ", rot_ang(0), rot_ang(1), rot_ang(2));                   // Angle
+    // fprintf(fp, "%lf %lf %lf ", state_point.pos(0), state_point.pos(1), state_point.pos(2)); // Pos  
+    // fprintf(fp, "%lf %lf %lf ", 0.0, 0.0, 0.0);                                        // omega  
+    // fprintf(fp, "%lf %lf %lf ", state_point.vel(0), state_point.vel(1), state_point.vel(2)); // Vel  
+    // fprintf(fp, "%lf %lf %lf ", 0.0, 0.0, 0.0);                                        // Acc  
+    // fprintf(fp, "%lf %lf %lf ", state_point.bg(0), state_point.bg(1), state_point.bg(2));    // Bias_g  
+    // fprintf(fp, "%lf %lf %lf ", state_point.ba(0), state_point.ba(1), state_point.ba(2));    // Bias_a  
+    // fprintf(fp, "%lf %lf %lf ", state_point.grav[0], state_point.grav[1], state_point.grav[2]); // Bias_a  
+
+    // IMU Pose
+    fprintf(pose_fp, "%lf ", Measures.lidar_beg_time);
+    fprintf(pose_fp, "%lf %lf %lf ", state_point.pos(0), state_point.pos(1), state_point.pos(2)); // Pos
+    fprintf(pose_fp, "%lf %lf %lf %lf ", state_point.rot.coeffs()[0], state_point.rot.coeffs()[1], state_point.rot.coeffs()[2], state_point.rot.coeffs()[3]); // q
+
+    fprintf(pose_fp, "\r\n");  
+    fflush(pose_fp);
+
+    auto covariance = kf.get_P();
+    double data[16]= {0};
+    data[0] = Measures.lidar_beg_time;
+    data[1] = sqrt(covariance(0, 0));
+    data[2] = sqrt(covariance(1, 1));
+    data[3] = sqrt(covariance(2, 2));
+    data[4] = sqrt(covariance(12, 12));
+    data[5] = sqrt(covariance(13, 13));
+    data[6] = sqrt(covariance(14, 14));
+    data[7] = sqrt(covariance(3, 3)) * 180.0 / M_PI;
+    data[8] = sqrt(covariance(4, 4)) * 180.0 / M_PI;
+    data[9] = sqrt(covariance(5, 5)) * 180.0 / M_PI;
+    data[10] = sqrt(covariance(15, 15)) * 3600 * 180.0 / M_PI;
+    data[11] = sqrt(covariance(16, 16)) * 3600 * 180.0 / M_PI;
+    data[12] = sqrt(covariance(17, 17)) * 3600 * 180.0 / M_PI;
+    data[13] = sqrt(covariance(18, 18)) * 1.0e5;
+    data[14] = sqrt(covariance(19, 19)) * 1.0e5;
+    data[15] = sqrt(covariance(20, 20)) * 1.0e5;
+    fwrite(data, sizeof(double), 16, cov_fp);
+}
+
+bool save_hba_frame(const PointCloudXYZI &cloud_lidar,
+                    const std::filesystem::path &pcd_dir,
+                    std::ofstream &pose_writer_hba,
+                    size_t frame_index)
+{
+    pcl::PointCloud<pcl::PointXYZI> save_cloud_lidar;
+    save_cloud_lidar.reserve(cloud_lidar.size());
+    for (const auto &point : cloud_lidar)
+    {
+        pcl::PointXYZI save_point;
+        save_point.x = point.x;
+        save_point.y = point.y;
+        save_point.z = point.z;
+        save_point.intensity = point.intensity;
+        save_cloud_lidar.push_back(save_point);
+    }
+
+    const std::filesystem::path pcd_file = pcd_dir / (std::to_string(frame_index) + ".pcd");
+    if (pcl::io::savePCDFileBinary(pcd_file.string(), save_cloud_lidar) != 0)
+    {
+        ROS_ERROR_STREAM("Failed to save HBA point cloud: " << pcd_file);
+        return false;
+    }
+
+    const Eigen::Matrix3d rotation_world_lidar =
+        state_point.rot.toRotationMatrix() * state_point.offset_R_L_I.toRotationMatrix();
+    const Eigen::Vector3d translation_world_lidar =
+        state_point.pos + state_point.rot * state_point.offset_T_L_I;
+    Eigen::Quaterniond orientation_world_lidar(rotation_world_lidar);
+    orientation_world_lidar.normalize();
+
+    pose_writer_hba << std::fixed << std::setprecision(15)
+                    << translation_world_lidar.transpose() << " "
+                    << orientation_world_lidar.w() << " "
+                    << orientation_world_lidar.x() << " "
+                    << orientation_world_lidar.y() << " "
+                    << orientation_world_lidar.z() << "\n";
+    pose_writer_hba.flush();
+    if (!pose_writer_hba)
+    {
+        ROS_ERROR("Failed to write HBA pose file");
+        return false;
+    }
+
+    return true;
 }
 
 void pointBodyToWorld_ikfom(PointType const * const pi, PointType * const po, state_ikfom &s)
@@ -337,8 +414,10 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
     publish_count ++;
     // cout<<"IMU got at: "<<msg_in->header.stamp.toSec()<<endl;
     sensor_msgs::Imu::Ptr msg(new sensor_msgs::Imu(*msg_in));
+    
 
     msg->header.stamp = ros::Time().fromSec(msg_in->header.stamp.toSec() - time_diff_lidar_to_imu);
+    
     if (abs(timediff_lidar_wrt_imu) > 0.1 && time_sync_en)
     {
         msg->header.stamp = \
@@ -762,6 +841,7 @@ int main(int argc, char** argv)
     nh.param<string>("common/lid_topic",lid_topic,"/livox/lidar");
     nh.param<string>("common/imu_topic", imu_topic,"/livox/imu");
     nh.param<bool>("common/time_sync_en", time_sync_en, false);
+    nh.param<string>("common/output_path", root_dir, "/home/hailiang/workspace");
     nh.param<double>("common/time_offset_lidar_to_imu", time_diff_lidar_to_imu, 0.0);
     nh.param<double>("filter_size_corner",filter_size_corner_min,0.5);
     nh.param<double>("filter_size_surf",filter_size_surf_min,0.5);
@@ -784,6 +864,8 @@ int main(int argc, char** argv)
     nh.param<bool>("mapping/extrinsic_est_en", extrinsic_est_en, true);
     nh.param<bool>("pcd_save/pcd_save_en", pcd_save_en, false);
     nh.param<int>("pcd_save/interval", pcd_save_interval, -1);
+    nh.param<bool>("hba_save/enable", hba_save_en, false);
+    nh.param<string>("hba_save/output_path", hba_output_path, "");
     nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());
     nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
     cout<<"p_pre->lidar_type "<<p_pre->lidar_type<<endl;
@@ -821,9 +903,38 @@ int main(int argc, char** argv)
     kf.init_dyn_share(get_f, df_dx, df_dw, h_share_model, NUM_MAX_ITERATIONS, epsi);
 
     /*** debug record ***/
-    FILE *fp;
-    string pos_log_dir = root_dir + "/Log/pos_log.txt";
-    fp = fopen(pos_log_dir.c_str(),"w");
+    FILE *pose_fp, *cov_fp;
+    if(!std::filesystem::exists(std::filesystem::path(root_dir)))
+        std::filesystem::create_directories(root_dir);
+
+    string pose_log_dir = root_dir + "/trajectory.csv";
+    pose_fp = fopen(pose_log_dir.c_str(), "w");
+    string cov_log_dir = root_dir + "/STD.bin";
+    cov_fp = fopen(cov_log_dir.c_str(), "w");
+
+    std::filesystem::path hba_dir;
+    std::ofstream pose_writer_hba;
+    if (hba_save_en)
+    {
+        hba_dir = hba_output_path.empty() ? std::filesystem::path(root_dir) / "hba" : std::filesystem::path(hba_output_path);
+        const std::filesystem::path hba_pcd_dir = hba_dir / "pcd";
+        std::error_code error;
+        std::filesystem::create_directories(hba_pcd_dir, error);
+        if (error)
+        {
+            ROS_ERROR_STREAM("Failed to create HBA output directory " << hba_pcd_dir << ": " << error.message());
+            hba_save_en = false;
+        }
+        else
+        {
+            pose_writer_hba.open(hba_dir / "pose.json");
+            if (!pose_writer_hba)
+            {
+                ROS_ERROR_STREAM("Failed to open HBA pose file: " << hba_dir / "pose.json");
+                hba_save_en = false;
+            }
+        }
+    }
 
     ofstream fout_pre, fout_out, fout_dbg;
     fout_pre.open(DEBUG_FILE_DIR("mat_pre.txt"),ios::out);
@@ -855,6 +966,7 @@ int main(int argc, char** argv)
     signal(SIGINT, SigHandle);
     ros::Rate rate(5000);
     bool status = ros::ok();
+    size_t hba_frame_index = 0;
     while (status)
     {
         if (flg_exit) break;
@@ -869,7 +981,7 @@ int main(int argc, char** argv)
                 continue;
             }
 
-            double t0,t1,t2,t3,t4,t5,match_start, solve_start, svd_time;
+            double t0,t1,t2,t3,t4,t5,match_start, solve_start, svd_time, t_predict;
 
             match_time = 0;
             kdtree_search_time = 0.0;
@@ -878,7 +990,7 @@ int main(int argc, char** argv)
             svd_time   = 0;
             t0 = omp_get_wtime();
 
-            p_imu->Process(Measures, kf, feats_undistort);
+            p_imu->Process(Measures, kf, feats_undistort, t_predict);
             state_point = kf.get_x();
             pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
 
@@ -968,6 +1080,16 @@ int main(int argc, char** argv)
             t3 = omp_get_wtime();
             map_incremental();
             t5 = omp_get_wtime();
+
+            if (hba_save_en && save_hba_frame(*feats_undistort, hba_dir / "pcd", pose_writer_hba, hba_frame_index))
+            {
+                ++hba_frame_index;
+            }
+            else if (hba_save_en)
+            {
+                ROS_ERROR("Disabling HBA output after a write failure");
+                hba_save_en = false;
+            }
             
             /******* Publish points *******/
             if (path_en)                         publish_path(pubPath);
@@ -988,22 +1110,38 @@ int main(int argc, char** argv)
                 aver_time_solve = aver_time_solve * (frame_num - 1)/frame_num + (solve_time + solve_H_time)/frame_num;
                 aver_time_const_H_time = aver_time_const_H_time * (frame_num - 1)/frame_num + solve_time / frame_num;
                 T1[time_log_counter] = Measures.lidar_beg_time;
+                // total
                 s_plot[time_log_counter] = t5 - t0;
-                s_plot2[time_log_counter] = feats_undistort->points.size();
-                s_plot3[time_log_counter] = kdtree_incremental_time;
-                s_plot4[time_log_counter] = kdtree_search_time;
+                // data association
+                s_plot2[time_log_counter] = match_time + t5 - t3;
+                // predict
+                s_plot3[time_log_counter] = t_predict;
+                // update
+                s_plot4[time_log_counter] = solve_time + solve_H_time;
+                // origin
                 s_plot5[time_log_counter] = kdtree_delete_counter;
                 s_plot6[time_log_counter] = kdtree_delete_time;
                 s_plot7[time_log_counter] = kdtree_size_st;
                 s_plot8[time_log_counter] = kdtree_size_end;
                 s_plot9[time_log_counter] = aver_time_consu;
                 s_plot10[time_log_counter] = add_point_size;
+
+                // s_plot[time_log_counter] = t5 - t0;
+                // s_plot2[time_log_counter] = feats_undistort->points.size();
+                // s_plot3[time_log_counter] = kdtree_incremental_time;
+                // s_plot4[time_log_counter] = kdtree_search_time;
+                // s_plot5[time_log_counter] = kdtree_delete_counter;
+                // s_plot6[time_log_counter] = kdtree_delete_time;
+                // s_plot7[time_log_counter] = kdtree_size_st;
+                // s_plot8[time_log_counter] = kdtree_size_end;
+                // s_plot9[time_log_counter] = aver_time_consu;
+                // s_plot10[time_log_counter] = add_point_size;
                 time_log_counter ++;
-                printf("[ mapping ]: time: IMU + Map + Input Downsample: %0.6f ave match: %0.6f ave solve: %0.6f  ave ICP: %0.6f  map incre: %0.6f ave total: %0.6f icp: %0.6f construct H: %0.6f \n",t1-t0,aver_time_match,aver_time_solve,t3-t1,t5-t3,aver_time_consu,aver_time_icp, aver_time_const_H_time);
+                // printf("[ mapping ]: time: IMU + Map + Input Downsample: %0.6f ave match: %0.6f ave solve: %0.6f  ave ICP: %0.6f  map incre: %0.6f ave total: %0.6f icp: %0.6f construct H: %0.6f \n",t1-t0,aver_time_match,aver_time_solve,t3-t1,t5-t3,aver_time_consu,aver_time_icp, aver_time_const_H_time);
                 ext_euler = SO3ToEuler(state_point.offset_R_L_I);
                 fout_out << setw(20) << Measures.lidar_beg_time - first_lidar_time << " " << euler_cur.transpose() << " " << state_point.pos.transpose()<< " " << ext_euler.transpose() << " "<<state_point.offset_T_L_I.transpose()<<" "<< state_point.vel.transpose() \
                 <<" "<<state_point.bg.transpose()<<" "<<state_point.ba.transpose()<<" "<<state_point.grav<<" "<<feats_undistort->points.size()<<endl;
-                dump_lio_state_to_log(fp);
+                dump_lio_state_to_log(pose_fp, cov_fp);
             }
         }
 
@@ -1025,16 +1163,17 @@ int main(int argc, char** argv)
 
     fout_out.close();
     fout_pre.close();
+    pose_writer_hba.close();
 
     if (runtime_pos_log)
     {
         vector<double> t, s_vec, s_vec2, s_vec3, s_vec4, s_vec5, s_vec6, s_vec7;    
         FILE *fp2;
-        string log_dir = root_dir + "/Log/fast_lio_time_log.csv";
+        string log_dir = root_dir + "/fast_lio_time_log.csv";
         fp2 = fopen(log_dir.c_str(),"w");
-        fprintf(fp2,"time_stamp, total time, scan point size, incremental time, search time, delete size, delete time, tree size st, tree size end, add point size, preprocess time\n");
+        fprintf(fp2,"time_stamp, total time, data association time, predict time, update time, delete size, delete time, tree size st, tree size end, add point size, preprocess time\n");
         for (int i = 0;i<time_log_counter; i++){
-            fprintf(fp2,"%0.8f,%0.8f,%d,%0.8f,%0.8f,%d,%0.8f,%d,%d,%d,%0.8f\n",T1[i],s_plot[i],int(s_plot2[i]),s_plot3[i],s_plot4[i],int(s_plot5[i]),s_plot6[i],int(s_plot7[i]),int(s_plot8[i]), int(s_plot10[i]), s_plot11[i]);
+            fprintf(fp2,"%0.8f,%0.8f,%0.8f,%0.8f,%0.8f,%d,%0.8f,%d,%d,%d,%0.8f\n",T1[i],s_plot[i],s_plot2[i],s_plot3[i],s_plot4[i],int(s_plot5[i]),s_plot6[i],int(s_plot7[i]),int(s_plot8[i]), int(s_plot10[i]), s_plot11[i]);
             t.push_back(T1[i]);
             s_vec.push_back(s_plot9[i]);
             s_vec2.push_back(s_plot3[i] + s_plot6[i]);

@@ -49,7 +49,7 @@ class ImuProcess
   void set_gyr_bias_cov(const V3D &b_g);
   void set_acc_bias_cov(const V3D &b_a);
   Eigen::Matrix<double, 12, 12> Q;
-  void Process(const MeasureGroup &meas,  esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI::Ptr pcl_un_);
+  void Process(const MeasureGroup &meas,  esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI::Ptr pcl_un_, double &t_predict);
 
   ofstream fout_imu;
   V3D cov_acc;
@@ -62,7 +62,7 @@ class ImuProcess
 
  private:
   void IMU_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, int &N);
-  void UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI &pcl_in_out);
+  void UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI &pcl_in_out, double &t_predict);
 
   PointCloudXYZI::Ptr cur_pcl_un_;
   sensor_msgs::ImuConstPtr last_imu_;
@@ -211,7 +211,7 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 
 
 }
 
-void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI &pcl_out)
+void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI &pcl_out, double &t_predict)
 {
   /*** add the imu of the last frame-tail to the of current frame-head ***/
   auto v_imu = meas.imu;
@@ -236,6 +236,8 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
   V3D angvel_avr, acc_avr, acc_imu, vel_imu, pos_imu;
   M3D R_imu;
 
+  double t0, t1;
+  t0 = omp_get_wtime();
   double dt = 0;
 
   input_ikfom in;
@@ -291,11 +293,13 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
   double note = pcl_end_time > imu_end_time ? 1.0 : -1.0;
   dt = note * (pcl_end_time - imu_end_time);
   kf_state.predict(dt, Q, in);
-  
+
   imu_state = kf_state.get_x();
   last_imu_ = meas.imu.back();
   last_lidar_end_time_ = pcl_end_time;
 
+  t1 = omp_get_wtime();
+  t_predict = t1 - t0;
   /*** undistort each lidar point (backward propagation) ***/
   if (pcl_out.points.begin() == pcl_out.points.end()) return;
   auto it_pcl = pcl_out.points.end() - 1;
@@ -334,7 +338,7 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas, esekfom::esekf<state_ikf
   }
 }
 
-void ImuProcess::Process(const MeasureGroup &meas,  esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI::Ptr cur_pcl_un_)
+void ImuProcess::Process(const MeasureGroup &meas,  esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI::Ptr cur_pcl_un_, double &t_predict)
 {
   double t1,t2,t3;
   t1 = omp_get_wtime();
@@ -368,7 +372,7 @@ void ImuProcess::Process(const MeasureGroup &meas,  esekfom::esekf<state_ikfom, 
     return;
   }
 
-  UndistortPcl(meas, kf_state, *cur_pcl_un_);
+  UndistortPcl(meas, kf_state, *cur_pcl_un_, t_predict);
 
   t2 = omp_get_wtime();
   t3 = omp_get_wtime();
