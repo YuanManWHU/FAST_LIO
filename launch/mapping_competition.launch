@@ -3,7 +3,7 @@
   <arg name="bagfile" default="/media/ym/BLUE/Datasets/全国激光雷达大会数据处理大赛/sequence_01_0000_0550.bag"/>
   <arg name="output_dir" default="$(find fast_lio)/result/competition"/>
   <arg name="rviz" default="true"/>
-  <arg name="play_rate" default="1.0"/>
+  <arg name="play_rate" default="4.0"/>
 
   <rosparam command="load" file="$(find fast_lio)/config/competition_airy.yaml"/>
 
@@ -31,6 +31,10 @@
 	<node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz" args="-d $(find fast_lio)/rviz_cfg/loam_livox_robnav.rviz" />
 	</group>
 
-  <node pkg="tf2_ros" type="static_transform_publisher" name="world_to_map_broadcaster"
-		args="0 0 0 -1 0 0 0 map camera_init"/>
+  <!-- <node pkg="tf2_ros" type="static_transform_publisher" name="world_to_map_broadcaster"
+		args="0 0 0 -1 0 0 0 map camera_init"/> -->
+  <node pkg="tf2_ros"
+        type="static_transform_publisher"
+        name="world_to_map_broadcaster"
+        args="0 0 0 0 -0.70710678 0 0.70710678 map camera_init"/>
 </launch>

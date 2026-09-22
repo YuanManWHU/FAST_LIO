@@ -1,7 +1,7 @@
 common:
     lid_topic: "/rslidar_front_points"
     imu_topic: "/rslidar_front_imu_data"
-    output_path: "/home/slam/workspace/src/FAST_LIO/result/competition"
+    output_path: "/home/slam/workspace/src/FAST_LIO/result/competition/01"
     time_sync_en: false
     time_offset_lidar_to_imu: 0.0
 
