@@ -78,17 +78,20 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointClo
     velodyne_handler(msg);
     break;
 
-<<<<<<< HEAD
   case AT128:
     at128_handler(msg);
     break;
-  
+
   case LS_C16:
     ls_c16_handler(msg);
-=======
+    break;
+
   case MARSIM:
     sim_handler(msg);
->>>>>>> 7cc4175de6f8ba2edf34bab02a42195b141027e9
+    break;
+
+  case AIRY:
+    airy_handler(msg);
     break;
   
   default:
@@ -637,6 +640,65 @@ void Preprocess::velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
         }
       }
     }
+}
+
+
+void Preprocess::airy_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
+{
+  pl_surf.clear();
+  pl_corn.clear();
+  pl_full.clear();
+
+  pcl::PointCloud<airy_ros::Point> pl_orig;
+  pcl::fromROSMsg(*msg, pl_orig);
+
+  const int plsize = static_cast<int>(pl_orig.size());
+  pl_surf.reserve(plsize);
+
+  const double scan_beg_time = msg->header.stamp.toSec();
+  uint valid_num = 0;
+
+  for (int i = 0; i < plsize; ++i)
+  {
+    const auto &raw = pl_orig.points[i];
+
+    const double range2 =
+        static_cast<double>(raw.x) * raw.x +
+        static_cast<double>(raw.y) * raw.y +
+        static_cast<double>(raw.z) * raw.z;
+    if (!std::isfinite(raw.x) || !std::isfinite(raw.y) || !std::isfinite(raw.z) ||
+        !std::isfinite(raw.timestamp) || range2 < blind * blind)
+      continue;
+
+    ++valid_num;
+    if (point_filter_num > 1 && valid_num % point_filter_num != 0)
+      continue;
+
+    PointType p;
+    p.x = raw.x;
+    p.y = raw.y;
+    p.z = raw.z;
+    p.intensity = raw.intensity;
+    p.normal_x = 0.0f;
+    p.normal_y = 0.0f;
+    p.normal_z = 0.0f;
+
+    // FAST-LIO stores the point time offset in curvature, in milliseconds.
+    // Airy provides an absolute float64 point timestamp in seconds.
+    p.curvature = static_cast<float>((raw.timestamp - scan_beg_time) * 1000.0);
+
+    // Ignore points with clearly invalid negative offsets. Tiny negative values
+    // from floating-point roundoff are clamped to the scan start.
+    if (p.curvature < -1.0f)
+      continue;
+    if (p.curvature < 0.0f)
+      p.curvature = 0.0f;
+
+    pl_surf.push_back(p);
+  }
+
+  // Airy PointCloud2 storage order is not assumed to be time sorted.
+  std::sort(pl_surf.points.begin(), pl_surf.points.end(), time_list);
 }
 
 void Preprocess::sim_handler(const sensor_msgs::PointCloud2::ConstPtr &msg) {
