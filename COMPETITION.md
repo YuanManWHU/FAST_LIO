@@ -43,7 +43,7 @@ Use `output_dir:=...` if a different result directory is required.
 
 ## Output
 
-The trajectory writer records the original LiDAR `header.stamp` and interpolates the FAST-LIO IMU-origin odometry to those timestamps. It writes TUM format:
+The mapping node records every original LiDAR `header.stamp`. FAST-LIO estimates the IMU-origin state at scan end; the competition output path interpolates between adjacent processed scan-end posterior states to the original LiDAR header timestamps. It writes TUM format:
 
 ```text
 timestamp tx ty tz qx qy qz qw
@@ -57,6 +57,6 @@ Results are written to:
   scene_0002.txt
 ```
 
-The writer rejects non-finite samples and duplicate/non-increasing timestamps. Prefix/suffix timestamps outside the available FAST-LIO odometry history are clamped to the nearest available pose and reported in the ROS log.
+The output logic rejects non-finite samples and duplicate/non-increasing timestamps. Initialization-prefix or final suffix timestamps outside the available posterior-state history are clamped to the nearest available pose and reported in the ROS log. For the provided competition bags the initialization prefix occurs during the long static start.
 
 Before submission, place a competition-required team `README.md` next to the `trajectories` directory and validate the directory with the organizer's public validator.
