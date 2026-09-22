@@ -1,0 +1,42 @@
+common:
+    lid_topic: "/rslidar_front_points"
+    imu_topic: "/rslidar_front_imu_data"
+    output_path: "/home/slam/fast_lio_ws/src/FAST_LIO/result/competition"
+    time_sync_en: false
+    time_offset_lidar_to_imu: 0.0
+
+preprocess:
+    lidar_type: 7              # AIRY
+    scan_line: 128
+    scan_rate: 10
+    timestamp_unit: 0          # unused by AIRY; point timestamp is absolute seconds
+    blind: 0.1
+
+mapping:
+    acc_cov: 0.1
+    gyr_cov: 0.1
+    b_acc_cov: 0.0001
+    b_gyr_cov: 0.0001
+    fov_degree: 360
+    det_range: 60.0
+    extrinsic_est_en: false
+    # Official calibration direction:
+    # p_imu = R_imu_lidar * p_lidar + t_imu_lidar
+    extrinsic_T: [0.00425, 0.00418, -0.00446]
+    extrinsic_R: [-0.0082098427130477, -0.9999652081824480,  0.0014767895111225,
+                  -0.9999587578050865,  0.0082155072710765,  0.0038714505275241,
+                  -0.0038834484076902, -0.0014449446051793, -0.9999914154449288]
+
+publish:
+    path_en: false
+    scan_publish_en: false
+    dense_publish_en: false
+    scan_bodyframe_pub_en: false
+
+pcd_save:
+    pcd_save_en: false
+    interval: -1
+
+hba_save:
+    enable: false
+    output_path: ""
