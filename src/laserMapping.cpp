@@ -109,6 +109,27 @@ deque<double>                     time_buffer;
 deque<PointCloudXYZI::Ptr>        lidar_buffer;
 deque<sensor_msgs::Imu::ConstPtr> imu_buffer;
 
+struct CompetitionPoseSample
+{
+    double timestamp = 0.0;
+    V3D position = Zero3d;
+    Eigen::Quaterniond orientation = Eigen::Quaterniond::Identity();
+};
+
+bool competition_output_en = false;
+string competition_scene_name = "scene_0001";
+string competition_output_dir;
+std::ofstream competition_traj_ofs;
+deque<double> competition_pending_lidar_times;
+CompetitionPoseSample competition_prev_pose;
+CompetitionPoseSample competition_curr_pose;
+bool competition_have_prev_pose = false;
+bool competition_have_curr_pose = false;
+double competition_last_written_time = -1.0;
+size_t competition_prefix_clamped = 0;
+size_t competition_suffix_clamped = 0;
+
+
 PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_undistort(new PointCloudXYZI());
 PointCloudXYZI::Ptr feats_down_body(new PointCloudXYZI());
@@ -143,6 +164,99 @@ geometry_msgs::PoseStamped msg_body_pose;
 
 shared_ptr<Preprocess> p_pre(new Preprocess());
 shared_ptr<ImuProcess> p_imu(new ImuProcess());
+
+void competition_write_pose(const CompetitionPoseSample &pose)
+{
+    if (!competition_output_en || !competition_traj_ofs.is_open()) return;
+    if (!std::isfinite(pose.timestamp) || !pose.position.allFinite() ||
+        !pose.orientation.coeffs().allFinite() || pose.orientation.norm() < 1e-12) return;
+    if (competition_last_written_time >= 0.0 && pose.timestamp <= competition_last_written_time) return;
+
+    Eigen::Quaterniond q = pose.orientation;
+    q.normalize();
+    competition_traj_ofs << std::fixed << std::setprecision(15)
+                         << pose.timestamp << " "
+                         << pose.position.x() << " "
+                         << pose.position.y() << " "
+                         << pose.position.z() << " "
+                         << q.x() << " " << q.y() << " " << q.z() << " " << q.w() << "\n";
+    competition_traj_ofs.flush();
+    competition_last_written_time = pose.timestamp;
+}
+
+CompetitionPoseSample competition_interpolate_pose(const CompetitionPoseSample &a,
+                                                    const CompetitionPoseSample &b,
+                                                    double timestamp)
+{
+    CompetitionPoseSample out;
+    out.timestamp = timestamp;
+    const double dt = b.timestamp - a.timestamp;
+    double alpha = dt > 0.0 ? (timestamp - a.timestamp) / dt : 0.0;
+    alpha = std::max(0.0, std::min(1.0, alpha));
+    out.position = (1.0 - alpha) * a.position + alpha * b.position;
+    out.orientation = a.orientation.slerp(alpha, b.orientation);
+    out.orientation.normalize();
+    return out;
+}
+
+void competition_flush_bracketed()
+{
+    if (!competition_output_en || !competition_have_curr_pose) return;
+
+    while (!competition_pending_lidar_times.empty() &&
+           competition_pending_lidar_times.front() <= competition_curr_pose.timestamp)
+    {
+        const double t = competition_pending_lidar_times.front();
+        competition_pending_lidar_times.pop_front();
+
+        CompetitionPoseSample out;
+        if (!competition_have_prev_pose || t <= competition_prev_pose.timestamp)
+        {
+            out = competition_have_prev_pose ? competition_prev_pose : competition_curr_pose;
+            out.timestamp = t;
+            ++competition_prefix_clamped;
+        }
+        else
+        {
+            out = competition_interpolate_pose(competition_prev_pose, competition_curr_pose, t);
+        }
+        competition_write_pose(out);
+    }
+}
+
+void competition_record_filter_pose(double timestamp, const state_ikfom &state)
+{
+    if (!competition_output_en) return;
+
+    CompetitionPoseSample sample;
+    sample.timestamp = timestamp;
+    sample.position = state.pos;
+    sample.orientation = Eigen::Quaterniond(state.rot.toRotationMatrix());
+    sample.orientation.normalize();
+
+    if (competition_have_curr_pose && sample.timestamp <= competition_curr_pose.timestamp) return;
+    if (competition_have_curr_pose)
+    {
+        competition_prev_pose = competition_curr_pose;
+        competition_have_prev_pose = true;
+    }
+    competition_curr_pose = sample;
+    competition_have_curr_pose = true;
+    competition_flush_bracketed();
+}
+
+void competition_flush_suffix()
+{
+    if (!competition_output_en || !competition_have_curr_pose) return;
+    while (!competition_pending_lidar_times.empty())
+    {
+        CompetitionPoseSample out = competition_curr_pose;
+        out.timestamp = competition_pending_lidar_times.front();
+        competition_pending_lidar_times.pop_front();
+        ++competition_suffix_clamped;
+        competition_write_pose(out);
+    }
+}
 
 void SigHandle(int sig)
 {
@@ -455,6 +569,12 @@ bool sync_packages(MeasureGroup &meas)
     {
         meas.lidar = lidar_buffer.front();
         meas.lidar_beg_time = time_buffer.front();
+        if (competition_output_en)
+        {
+            if (competition_pending_lidar_times.empty() ||
+                meas.lidar_beg_time > competition_pending_lidar_times.back())
+                competition_pending_lidar_times.push_back(meas.lidar_beg_time);
+        }
 
 
         if (meas.lidar->points.size() <= 1) // time too little
@@ -871,6 +991,9 @@ int main(int argc, char** argv)
     nh.param<int>("pcd_save/interval", pcd_save_interval, -1);
     nh.param<bool>("hba_save/enable", hba_save_en, false);
     nh.param<string>("hba_save/output_path", hba_output_path, "");
+    nh.param<bool>("competition_output/enabled", competition_output_en, false);
+    nh.param<string>("competition_output/scene_name", competition_scene_name, "scene_0001");
+    nh.param<string>("competition_output/output_dir", competition_output_dir, root_dir);
     nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());
     nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
 
@@ -913,6 +1036,29 @@ int main(int argc, char** argv)
     FILE *pose_fp, *cov_fp;
     if(!std::filesystem::exists(std::filesystem::path(root_dir)))
         std::filesystem::create_directories(root_dir);
+
+    if (competition_output_en)
+    {
+        const std::filesystem::path trajectory_dir =
+            std::filesystem::path(competition_output_dir) / "trajectories";
+        std::error_code ec;
+        std::filesystem::create_directories(trajectory_dir, ec);
+        if (ec)
+        {
+            ROS_FATAL_STREAM("Failed to create competition trajectory directory "
+                             << trajectory_dir << ": " << ec.message());
+            return -1;
+        }
+        const std::filesystem::path trajectory_path =
+            trajectory_dir / (competition_scene_name + ".txt");
+        competition_traj_ofs.open(trajectory_path.string(), std::ios::out | std::ios::trunc);
+        if (!competition_traj_ofs)
+        {
+            ROS_FATAL_STREAM("Failed to open competition trajectory file " << trajectory_path);
+            return -1;
+        }
+        ROS_INFO_STREAM("Competition trajectory output: " << trajectory_path);
+    }
 
     string pose_log_dir = root_dir + "/trajectory.csv";
     pose_fp = fopen(pose_log_dir.c_str(), "w");
@@ -1078,6 +1224,8 @@ int main(int argc, char** argv)
             geoQuat.z = state_point.rot.coeffs()[2];
             geoQuat.w = state_point.rot.coeffs()[3];
 
+            competition_record_filter_pose(lidar_end_time, state_point);
+
             double t_update_end = omp_get_wtime();
 
             /******* Publish odometry *******/
@@ -1166,6 +1314,15 @@ int main(int argc, char** argv)
         pcl::PCDWriter pcd_writer;
         cout << "current scan saved to /PCD/" << file_name<<endl;
         pcd_writer.writeBinary(all_points_dir, *pcl_wait_save);
+    }
+
+    competition_flush_suffix();
+    if (competition_traj_ofs.is_open())
+    {
+        competition_traj_ofs.flush();
+        competition_traj_ofs.close();
+        ROS_INFO("Competition trajectory finalized: prefix clamped=%zu, suffix clamped=%zu",
+                 competition_prefix_clamped, competition_suffix_clamped);
     }
 
     fout_out.close();
