@@ -700,7 +700,10 @@ void Preprocess::airy_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
   }
 
   // Airy PointCloud2 storage order is not assumed to be time sorted.
-  std::sort(pl_surf.points.begin(), pl_surf.points.end(), time_list);
+  std::sort(pl_surf.points.begin(), pl_surf.points.end(),
+            [](const PointType &a, const PointType &b) {
+              return a.curvature < b.curvature;
+            });
 }
 
 void Preprocess::sim_handler(const sensor_msgs::PointCloud2::ConstPtr &msg) {
