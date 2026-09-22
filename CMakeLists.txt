@@ -87,3 +87,7 @@ catkin_package(
 add_executable(fastlio_mapping src/laserMapping.cpp include/ikd-Tree/ikd_Tree.cpp src/preprocess.cpp)
 target_link_libraries(fastlio_mapping ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES})
 target_include_directories(fastlio_mapping PRIVATE ${PYTHON_INCLUDE_DIRS})
+
+add_executable(competition_trajectory_writer src/competition_trajectory_writer.cpp)
+target_link_libraries(competition_trajectory_writer ${catkin_LIBRARIES})
+target_include_directories(competition_trajectory_writer PRIVATE ${EIGEN3_INCLUDE_DIR})
