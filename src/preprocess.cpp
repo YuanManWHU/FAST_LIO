@@ -78,17 +78,16 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointClo
     velodyne_handler(msg);
     break;
 
-<<<<<<< HEAD
   case AT128:
     at128_handler(msg);
     break;
-  
+
   case LS_C16:
     ls_c16_handler(msg);
-=======
+    break;
+
   case MARSIM:
     sim_handler(msg);
->>>>>>> 7cc4175de6f8ba2edf34bab02a42195b141027e9
     break;
   
   default:
