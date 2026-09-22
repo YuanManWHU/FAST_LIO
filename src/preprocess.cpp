@@ -1,4 +1,6 @@
 #include "preprocess.h"
+#include <algorithm>
+#include <cmath>
 
 #define RETURN0     0x00
 #define RETURN0AND1 0x10
