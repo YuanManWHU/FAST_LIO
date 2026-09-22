@@ -1,7 +1,7 @@
 <launch>
-  <arg name="scene_name" default="scene_0002"/>
-  <!-- <arg name="bagfile" default="/media/ym/BLUE/Datasets/全国激光雷达大会数据处理大赛/sequence_01_0000_0550.bag"/> -->
-  <arg name="bagfile" default="/media/ym/BLUE/Datasets/全国激光雷达大会数据处理大赛/sequence_02_0560_0970.bag"/>
+  <arg name="scene_name" default="scene_0001"/>
+  <arg name="bagfile" default="/media/ym/BLUE/Datasets/全国激光雷达大会数据处理大赛/sequence_01_0000_0550.bag"/>
+  <!-- <arg name="bagfile" default="/media/ym/BLUE/Datasets/全国激光雷达大会数据处理大赛/sequence_02_0560_0970.bag"/> -->
   <arg name="output_dir" default="$(find fast_lio)/result/competition"/>
   <arg name="rviz" default="true"/>
   <arg name="play_rate" default="4.0"/>
