@@ -28,9 +28,9 @@ mapping:
                   -0.0038834484076902, -0.0014449446051793, -0.9999914154449288]
 
 publish:
-    path_en: false
-    scan_publish_en: false
-    dense_publish_en: false
+    path_en: true
+    scan_publish_en: true
+    dense_publish_en: true
     scan_bodyframe_pub_en: false
 
 pcd_save:
@@ -45,4 +45,4 @@ hba_save:
 competition_output:
     enabled: true
     scene_name: "scene_0001"
-    output_dir: "/home/slam/fast_lio_ws/src/FAST_LIO/result/competition"
+    output_dir: "/home/slam/workspace/src/FAST_LIO/result/competition"
