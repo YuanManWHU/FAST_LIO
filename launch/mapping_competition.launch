@@ -26,7 +26,7 @@
 
   <!-- Play only the LiDAR-inertial topics used by this sub-track. -->
   <node pkg="rosbag" type="play" name="competition_bag"
-        args="--delay=2 -r $(arg play_rate) $(arg bagfile) /rslidar_front_points /rslidar_front_imu_data"
+        args="--delay=2 -r $(arg play_rate) $(arg bagfile) --topics /rslidar_front_points /rslidar_front_imu_data"
         output="screen"/>
 
   <group if="$(arg rviz)">
