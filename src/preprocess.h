@@ -14,11 +14,7 @@ using namespace std;
 typedef pcl::PointXYZINormal PointType;
 typedef pcl::PointCloud<PointType> PointCloudXYZI;
 
-<<<<<<< HEAD
-enum LID_TYPE{AVIA = 1, VELO16, OUST64, AT128, LS_C16}; //{1, 2, 3, 4, 5}
-=======
-enum LID_TYPE{AVIA = 1, VELO16, OUST64, MARSIM}; //{1, 2, 3}
->>>>>>> 7cc4175de6f8ba2edf34bab02a42195b141027e9
+enum LID_TYPE{AVIA = 1, VELO16, OUST64, AT128, LS_C16, MARSIM}; // {1, 2, 3, 4, 5, 6}
 enum TIME_UNIT{SEC = 0, MS = 1, US = 2, NS = 3};
 enum Feature{Nor, Poss_Plane, Real_Plane, Edge_Jump, Edge_Plane, Wire, ZeroPoint};
 enum Surround{Prev, Next};
@@ -154,12 +150,9 @@ class Preprocess
   void avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg);
   void oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
-<<<<<<< HEAD
   void at128_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void ls_c16_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
-=======
   void sim_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
->>>>>>> 7cc4175de6f8ba2edf34bab02a42195b141027e9
   void give_feature(PointCloudXYZI &pl, vector<orgtype> &types);
   void pub_func(PointCloudXYZI &pl, const ros::Time &ct);
   int  plane_judge(const PointCloudXYZI &pl, vector<orgtype> &types, uint i, uint &i_nex, Eigen::Vector3d &curr_direct);
